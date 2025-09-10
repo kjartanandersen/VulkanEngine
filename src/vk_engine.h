@@ -5,6 +5,17 @@
 
 #include <vk_types.h>
 
+struct FrameData {
+	VkCommandPool		_commandPool;								// command pool for allocating command buffers
+	VkCommandBuffer		_mainCommandBuffer;							// primary command buffer for rendering commands
+
+	VkSemaphore			_swapchainSemaphore, _renderSemaphore;		// semaphores for syncronization
+	VkFence				_renderFence;								// fence for syncronization
+
+};
+
+constexpr int FRAME_OVERLAP = 2;								// number of frames to use in the swapchain
+
 class VulkanEngine {
 public:
 
@@ -17,12 +28,26 @@ public:
 	
 
 
-	bool _isInitialized{ false };								// true if the engine is initialized	
-	int _frameNumber{ 0 };										// current frame number		
-	bool stop_rendering{ false };								// true if the engine should stop rendering
-	VkExtent2D _windowExtent{ 1700 , 900 };						// window extent (width and height)
+	bool		_isInitialized{ false };								// true if the engine is initialized	
+	int			_frameNumber{ 0 };										// current frame number		
+	bool		stop_rendering{ false };								// true if the engine should stop rendering
+	VkExtent2D	_windowExtent{ 1700 , 900 };							// window extent (width and height)
 
-	static VulkanEngine& Get(); 								// get the singleton instance of the engine
+	FrameData	_frames[FRAME_OVERLAP];									// per-frame data
+
+	/// <summary>
+	/// Gets the current frame data based on the frame number.
+	/// </summary>
+	FrameData& getCurrentFrame() { return _frames[_frameNumber % FRAME_OVERLAP]; } 
+
+	VkQueue		_graphicsQueue;										// graphics queue for rendering commands
+	uint32_t	_graphicsQueueFamily;								// family index of the graphics queue
+
+	/// <summary>
+	/// Retrieves a reference to the singleton instance of VulkanEngine.
+	/// </summary>
+	/// <returns>A reference to the singleton VulkanEngine instance.</returns>
+	static VulkanEngine& Get();
 
 
 	/**************************************************************
@@ -61,22 +86,23 @@ private:
 	/// </summary>
 	struct Init {
 		//VkInstance _instance;										// Vulkan instance 
-		vkb::Instance _vkbInstance;								// Vulkan Bootstrap instance wrapper
-		VkDebugUtilsMessengerEXT _debugMessenger;					// debug messenger for validation layers
-		VkPhysicalDevice _physicalDevice;							// physical device (GPU)
+		vkb::Instance				_vkbInstance;					// Vulkan Bootstrap instance wrapper
+		VkDebugUtilsMessengerEXT	_debugMessenger;				// debug messenger for validation layers
+		vkb::PhysicalDevice			_vkbPhysicalDevice;				// physical device (GPU)
+		//VkPhysicalDevice _physicalDevice;							// physical device (GPU)
 		//VkDevice _device;											// Vulkan logical device for commands 
-		vkb::Device _vkbDevice;									// Vulkan Bootstrap device wrapper
-		VkSurfaceKHR _surface;										// Vulkan window surface
+		vkb::Device					_vkbDevice;						// Vulkan Bootstrap device wrapper
+		VkSurfaceKHR				_surface;						// Vulkan window surface
 
-		//VkSwapchainKHR _swapchain;									// swapchain for presenting images to the window
-		vkb::Swapchain _vkbSwapchain;							// Vulkan Bootstrap swapchain wrapper
-		VkFormat _swapchainImageFormat;								// format of the swapchain images
+		//VkSwapchainKHR _swapchain;								// swapchain for presenting images to the window
+		vkb::Swapchain				_vkbSwapchain;					// Vulkan Bootstrap swapchain wrapper
+		VkFormat					_swapchainImageFormat;			// format of the swapchain images
 
-		std::vector<VkImage> _swapchainImages;						// swapchain images
-		std::vector<VkImageView> _swapchainImageViews;				// image views for the swapchain images
-		VkExtent2D _swapchainExtent;								// extent of the swapchain images
+		std::vector<VkImage>		_swapchainImages;				// swapchain images
+		std::vector<VkImageView>	_swapchainImageViews;			// image views for the swapchain images
+		VkExtent2D					_swapchainExtent;				// extent of the swapchain images
 
-		struct SDL_Window* _window{ nullptr }; 						// window handle 
+		struct SDL_Window*			_window{ nullptr }; 			// window handle 
 
 	} _init;
 
