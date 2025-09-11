@@ -6,6 +6,8 @@
 
 #include <vk_initializers.h>
 #include <vk_types.h>
+#include <vk_images.h>
+
 
 #include "VkBootstrap.h"
 
@@ -65,6 +67,11 @@ void VulkanEngine::cleanup()
         for (int i = 0; i < FRAME_OVERLAP; i++)
         {
             vkDestroyCommandPool(_init._vkbDevice.device, _frames[i]._commandPool, nullptr);
+
+            // Destroy sync objects
+            vkDestroyFence(_init._vkbDevice.device, _frames[i]._renderFence, nullptr);
+            vkDestroySemaphore(_init._vkbDevice.device, _frames[i]._renderSemaphore, nullptr);
+            vkDestroySemaphore(_init._vkbDevice.device, _frames[i]._swapchainSemaphore, nullptr);
         }
 
         destroySwapchain();
@@ -106,6 +113,58 @@ void VulkanEngine::draw()
 
     //start the command buffer recording
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+    // Make swapchain image into writeable mode before rendering
+    vkutil::transition_image(cmd, _init._swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+    VkClearColorValue clearValue;
+    float flashR = std::abs(std::sin(_frameNumber / 60.f));
+    float flashG = std::abs(std::sin(_frameNumber / 90.f));
+    float flashB = std::abs(std::sin(_frameNumber / 120.f));
+    clearValue = { {flashR, flashG, flashB, 1.0f} };
+
+    VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // Clear Image
+    vkCmdClearColorImage(cmd, _init._swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+    
+    // Make swapchain image into a presentable form
+    vkutil::transition_image(cmd, _init._swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+    // Finalize the command buffer
+    VK_CHECK(vkEndCommandBuffer(cmd));
+
+    // Prepare the submission to the queue
+    VkCommandBufferSubmitInfo cmdinfo = vkinit::command_buffer_submit_info(cmd);
+
+    VkSemaphoreSubmitInfo waitInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, getCurrentFrame()._swapchainSemaphore);
+    VkSemaphoreSubmitInfo signalInfo = vkinit::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, getCurrentFrame()._renderSemaphore);
+
+    VkSubmitInfo2 submit = vkinit::submit_info(&cmdinfo, &signalInfo, &waitInfo);
+
+    //submit command buffer to the queue and execute it.
+    // _renderFence will now block until the graphic commands finish execution
+    VK_CHECK(vkQueueSubmit2(_graphicsQueue, 1, &submit, getCurrentFrame()._renderFence));
+
+    // Prepare present
+
+    // Could be made into an initializer
+    VkPresentInfoKHR presentInfo = {};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.pNext = nullptr;
+    presentInfo.pSwapchains = &_init._vkbSwapchain.swapchain;
+    presentInfo.swapchainCount = 1;
+
+    presentInfo.pWaitSemaphores = &getCurrentFrame()._renderSemaphore;
+    presentInfo.waitSemaphoreCount = 1;
+
+    presentInfo.pImageIndices = &swapchainImageIndex;
+
+    VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
+
+    // Increase the number of frames drawn
+    _frameNumber++;
+
 
 
 
@@ -181,7 +240,7 @@ void VulkanEngine::initVulkan()
         .require_api_version(1, 3, 0)
         .use_default_debug_messenger()
 		.build();
-
+    
 	vkb::Instance vkb_inst = inst_ret.value();
 	// store the instance and debug messenger handles
     _init._vkbInstance = vkb_inst;
