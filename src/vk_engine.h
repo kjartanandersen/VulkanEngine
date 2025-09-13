@@ -5,17 +5,81 @@
 
 #include <vk_types.h>
 
+/****************************************************************
+* ENGINE STRUCTS
+* 
+* This section contains all the structs used by the Vulkan engine.
+****************************************************************/
+
+/// <summary>
+/// Represents the initialization state of the Vulkan engine
+/// </summary>
+struct Init {
+	//VkInstance _instance;										// Vulkan instance 
+	vkb::Instance				_vkbInstance;					// Vulkan Bootstrap instance wrapper
+	VkDebugUtilsMessengerEXT	_debugMessenger;				// debug messenger for validation layers
+	vkb::PhysicalDevice			_vkbPhysicalDevice;				// physical device (GPU)
+	//VkPhysicalDevice _physicalDevice;							// physical device (GPU)
+	//VkDevice _device;											// Vulkan logical device for commands 
+	vkb::Device					_vkbDevice;						// Vulkan Bootstrap device wrapper
+	VkSurfaceKHR				_surface;						// Vulkan window surface
+
+	//VkSwapchainKHR _swapchain;								// swapchain for presenting images to the window
+	vkb::Swapchain				_vkbSwapchain;					// Vulkan Bootstrap swapchain wrapper
+	VkFormat					_swapchainImageFormat;			// format of the swapchain images
+
+	std::vector<VkImage>		_swapchainImages;				// swapchain images
+	std::vector<VkImageView>	_swapchainImageViews;			// image views for the swapchain images
+	VkExtent2D					_swapchainExtent;				// extent of the swapchain images
+
+	struct SDL_Window* _window{ nullptr }; 			// window handle 
+
+};
+
+/// <summary>
+/// A queue that holds functions to be executed later, typically for resource cleanup.
+/// </summary>
+struct DeletionQueue
+{
+	std::deque<std::function<void()>> deletors;
+
+	void push_function(std::function<void()>&& function) {
+		deletors.push_back(function);
+	}
+
+	void flush() {
+		// reverse iterate the deletion queue to execute all the functions
+		for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
+			(*it)(); //call functors
+		}
+
+		deletors.clear();
+	}
+};
+
+
+/// <summary>
+/// Represents per-frame data used for rendering and synchronization.
+/// </summary>
 struct FrameData {
 	VkCommandPool		_commandPool;								// command pool for allocating command buffers
 	VkCommandBuffer		_mainCommandBuffer;							// primary command buffer for rendering commands
 
 	VkSemaphore			_swapchainSemaphore, _renderSemaphore;		// semaphores for syncronization
 	VkFence				_renderFence;								// fence for syncronization
+	DeletionQueue		_deletionQueue;								// deletion queue for resource cleanup
 
 };
 
+
+
+
 constexpr int FRAME_OVERLAP = 2;								// number of frames to use in the swapchain
 
+
+/// <summary>
+/// VulkanEngine class encapsulates the Vulkan rendering engine functionality.
+/// </summary>
 class VulkanEngine {
 public:
 
@@ -81,30 +145,14 @@ public:
 private:
 
 
-	/// <summary>
-	/// Represents the initialization state of the Vulkan engine
-	/// </summary>
-	struct Init {
-		//VkInstance _instance;										// Vulkan instance 
-		vkb::Instance				_vkbInstance;					// Vulkan Bootstrap instance wrapper
-		VkDebugUtilsMessengerEXT	_debugMessenger;				// debug messenger for validation layers
-		vkb::PhysicalDevice			_vkbPhysicalDevice;				// physical device (GPU)
-		//VkPhysicalDevice _physicalDevice;							// physical device (GPU)
-		//VkDevice _device;											// Vulkan logical device for commands 
-		vkb::Device					_vkbDevice;						// Vulkan Bootstrap device wrapper
-		VkSurfaceKHR				_surface;						// Vulkan window surface
+	Init			_init;											// initialization state of the engine
+	DeletionQueue	_mainDeletionQueue;								// main deletion queue for resource cleanup
+	VmaAllocator	_allocator;										// Vulkan memory allocator
 
-		//VkSwapchainKHR _swapchain;								// swapchain for presenting images to the window
-		vkb::Swapchain				_vkbSwapchain;					// Vulkan Bootstrap swapchain wrapper
-		VkFormat					_swapchainImageFormat;			// format of the swapchain images
+	// Draw Resources
+	AllocatedImage	_drawImage; 										// image used for drawing
+	VkExtent2D		_drawExtent;										// extent of the draw image
 
-		std::vector<VkImage>		_swapchainImages;				// swapchain images
-		std::vector<VkImageView>	_swapchainImageViews;			// image views for the swapchain images
-		VkExtent2D					_swapchainExtent;				// extent of the swapchain images
-
-		struct SDL_Window*			_window{ nullptr }; 			// window handle 
-
-	} _init;
 
 	/***************************************************************
 	* ENGINE PRIVATE METHODS
@@ -143,5 +191,11 @@ private:
 	/// Destroys the current swapchain and releases its associated resources.
 	/// </summary>
 	void destroySwapchain();
+
+	/// <summary>
+	/// Draws the background using the provided command buffer.
+	/// </summary>
+	/// <param name="cmd">The command buffer to record the drawing commands into.</param>
+	void drawBackground(VkCommandBuffer cmd);
 
 }; // end of vk_engine.h
